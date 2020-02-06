@@ -120,19 +120,7 @@ void sendMail(String status){
 }
 
 void installGo(){
-    if("${GO_VERSION}" == "1.12"){
-        installGo_1_12()
-    } else {
-        installGo_1_13()
-    }
-    installGoDependencies()
-}
-
-void installGo_1_12(){
-    sh "sudo yum install -y go-toolset-1.12.8"
-}
-
-void installGo_1_13(){
+    // Download and install Go binary
     sh """
         rm -rf go/
         GO_VERSION=1.13.6
@@ -141,28 +129,13 @@ void installGo_1_13(){
         tar xzf ${WORKSPACE}/\${GO_PACKAGE}
         chmod u+x ${WORKSPACE}/go/bin/*
     """
-}
 
-void installGoDependencies(){
-    setGoEnvVariables()
-    sh """
-        . ${GO_ENV_FILE}
-        export GO111MODULE=on
-        go get github.com/gobuffalo/packr/v2/packr2
-        go get -u golang.org/x/lint/golint
-    """
-}
-
-void setGoEnvVariables(){
-    sh "rm -rf ${GO_ENV_FILE}"
-    
-    if("${GO_VERSION}" == "1.12"){
-        sh "echo \"export GOROOT=/usr/lib/golang\" >> ${GO_ENV_FILE}"
-    } else {
-        sh "echo \"export GOROOT=${WORKSPACE}/go\" >> ${GO_ENV_FILE}"
-    }
-    
+    // Set go env variables into env file
     sh '''
+        rm -rf ${GO_ENV_FILE}
+
+        echo \"export GOROOT=${WORKSPACE}/go\" >> ${GO_ENV_FILE}
+
         mkdir -p ${WORKSPACE}/go-${GO_VERSION}
         mkdir -p ${WORKSPACE}/go-${GO_VERSION}/.cache
         
@@ -176,6 +149,14 @@ void setGoEnvVariables(){
         
         cat ${GO_ENV_FILE}
     '''
+
+    // Install Go dependencies
+    sh """
+        . ${GO_ENV_FILE}
+        export GO111MODULE=on
+        go get github.com/gobuffalo/packr/v2/packr2
+        go get -u golang.org/x/lint/golint
+    """
 }
 
 void installOperatorSDK(){
@@ -184,9 +165,9 @@ void installOperatorSDK(){
         sudo yum install -y python2
         sudo yum install -y --skip-broken '*mercurial*'
         
-        # Install operator-sdk 0.11.0
+        # Install operator-sdk 0.15.1
         rm -rf \$HOME/bin/operator-sdk
-        RELEASE_VERSION=v0.11.0
+        RELEASE_VERSION=v0.15.1
         curl -LO https://github.com/operator-framework/operator-sdk/releases/download/\${RELEASE_VERSION}/operator-sdk-\${RELEASE_VERSION}-x86_64-linux-gnu
         #curl -LO https://github.com/operator-framework/operator-sdk/releases/download/\${RELEASE_VERSION}/operator-sdk-\${RELEASE_VERSION}-x86_64-linux-gnu.asc
         #gpg --verify operator-sdk-\${RELEASE_VERSION}-x86_64-linux-gnu.asc
