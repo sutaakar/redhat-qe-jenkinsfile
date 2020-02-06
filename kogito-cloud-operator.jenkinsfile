@@ -83,9 +83,6 @@ pipeline {
                         
                         podman tag \${BUILT_IMAGE} \${IMAGE_NAME}:\${BUILD}
                         podman push \${IMAGE_NAME}:\${BUILD}
-
-                        sed -i "s/github.com\\/DATA-DOG\\/godog/github.com\\/cucumber\\/godog/g" go.mod
-                        sed -i "s/github.com\\/DATA-DOG\\/godog/github.com\\/cucumber\\/godog/g" go.sum
                         
                         make run-smoke concurrent=${CONCURRENT_TESTS} tags=${TEST_TAGS} operator_image=\${IMAGE_NAME} operator_tag=\${BUILD} maven_mirror=\${MAVEN_MIRROR_URL} concurrent=3 build_image_version=\${BUILD_IMAGE_VERSION}
                     """   
