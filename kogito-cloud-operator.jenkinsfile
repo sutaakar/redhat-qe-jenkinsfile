@@ -107,7 +107,9 @@ pipeline {
             }
         }
         always {
-            archiveArtifacts artifacts: 'test/smoke/logs/**/*.log', allowEmptyArchive: true
+            dir("${WORKING_DIR}") {
+                archiveArtifacts artifacts: 'test/smoke/logs/**/*.log', allowEmptyArchive: true
+            }
             deleteDir()
         }
     }
