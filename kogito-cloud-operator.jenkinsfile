@@ -93,17 +93,17 @@ pipeline {
      post {
         unstable {
             script {
-                sendMail("UNSTABLE")
+                sendMail()
             }
         }
         failure {
             script {
-                sendMail("FAILED")
+                sendMail()
             }
         }
         changed {
             script {
-                sendMail("CHANGED")
+                sendMail()
             }
         }
         always {
@@ -115,8 +115,8 @@ pipeline {
     }
 }
 
-void sendMail(String status){
-    mail to: "tradisso@redhat.com", subject: "${JOB_NAME} is in ${status} status", body: "${BUILD_URL}"
+void sendMail(){
+    mail to: "tradisso@redhat.com", subject: "${currentBuild.currentResult} for job ${JOB_NAME}", body: "${BUILD_URL}"
 }
 
 void installGo(){
