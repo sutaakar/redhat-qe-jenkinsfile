@@ -88,6 +88,14 @@ pipeline {
                     """   
                 }
             }
+            post {
+                always {
+                    dir("${WORKING_DIR}") {
+                        archiveArtifacts artifacts: 'test/logs/smoke/**/*.log', allowEmptyArchive: true
+                        junit testResults: 'test/logs/smoke/junit.xml', allowEmptyResults: true
+                    }
+                }
+            }
         }
         
         stage("Run BDD tests"){
@@ -116,6 +124,14 @@ pipeline {
                     """   
                 }
             }
+            post {
+                always {
+                    dir("${WORKING_DIR}") {
+                        archiveArtifacts artifacts: 'test/logs/full/**/*.log', allowEmptyArchive: true
+                        junit testResults: 'test/logs/full/junit.xml', allowEmptyResults: true
+                    }
+                }
+            }
         }
     }
      post {
@@ -135,9 +151,6 @@ pipeline {
             }
         }
         always {
-            dir("${WORKING_DIR}") {
-                archiveArtifacts artifacts: 'test/logs/**/*.log', allowEmptyArchive: true
-            }
             deleteDir()
         }
     }
