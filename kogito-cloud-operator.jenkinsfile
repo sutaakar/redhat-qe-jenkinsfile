@@ -220,7 +220,7 @@ void installOpenshiftClient(){
     sh """
         # Download and unzip latest OC client
         URL="https://mirror.openshift.com/pub/openshift-v4/clients/ocp/latest/"
-        PACKAGE_URL=`curl \$URL --silent | grep "openshift-client-linux" | sed -n 's/.*href="\\([^"]*\\).*/\\1/p'`
+        PACKAGE_URL=`curl \$URL --silent | grep "openshift-client-linux.tar.gz" | sed -n 's/.*href="\\([^"]*\\).*/\\1/p'`
         PACKAGE_URL="\${URL}\${PACKAGE_URL}"
         PACKAGE_NAME=`basename \${PACKAGE_URL}`
         wget \${PACKAGE_URL}
