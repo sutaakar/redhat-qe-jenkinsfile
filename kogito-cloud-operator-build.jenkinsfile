@@ -9,6 +9,13 @@ pipeline {
     }
     
     stages {
+        stage("Checks"){
+            steps{
+                sh """
+                    podman login -u="\${REGISTRY_USER}" -p="\${REGISTRY_PASSWORD}" \${IMAGE_REGISTRY}
+                """
+            }
+        }
         stage("Checkout code"){
             steps {
                 deleteDir()
