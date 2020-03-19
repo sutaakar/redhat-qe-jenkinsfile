@@ -70,8 +70,7 @@ pipeline {
 
                         IMAGE_NAME=\${IMAGE_REGISTRY}/\${IMAGE_GROUP}/kogito-cloud-operator
                         BUILT_IMAGE=`cat deploy/operator.yaml | grep image: | awk -F':' '{print \$2\":\"\$3}' | tr -d ' '`
-                        BUILT_TAG=`echo \${BUILT_IMAGE} | awk -F: '{print $2}'`
-                        FINAL_IMAGE="\${IMAGE_NAME}:\${BUILT_TAG}"
+                        FINAL_IMAGE="\${IMAGE_NAME}:\${REPOSITORY_BRANCH}"
 
                         echo "Built Image: \${BUILT_IMAGE}"
                         echo "Image to use: \${FINAL_IMAGE}"
