@@ -41,25 +41,16 @@ pipeline {
             }
         }
         
-        stage("Build images"){
+        stage("Build & Push images"){
             steps {
                 dir("${WORKING_DIR}") {
                     sh """
                         export PATH=/home/hudson/cekit/bin:\$PATH
+
                         sed -i "s|quay.io/kiegroup|${IMAGE_REGISTRY}/${IMAGE_GROUP}|g" *.yaml
                         sed -i "s|quay.io/kiegroup|${IMAGE_REGISTRY}/${IMAGE_GROUP}|g" Makefile
-                        make ${MAKE_COMMAND}
-                    """
-                }
-            }
-        }
-        stage("push images"){
-            steps {
-                dir("${WORKING_DIR}") {
-                    sh """
+
                         docker login -u="\${REGISTRY_USER}" -p="\${REGISTRY_PASSWORD}" \${IMAGE_REGISTRY}
-                        sed -i "s|quay.io/kiegroup|${IMAGE_REGISTRY}/${IMAGE_GROUP}|g" *.yaml
-                        sed -i "s|quay.io/kiegroup|${IMAGE_REGISTRY}/${IMAGE_GROUP}|g" Makefile
                         make push
                     """
                 }
