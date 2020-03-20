@@ -9,6 +9,17 @@ pipeline {
     }
     
     stages {
+        stage("Init"){
+            steps{
+                script {
+                    sh """
+                        podman login -u="\${REGISTRY_USER}" -p="\${REGISTRY_PASSWORD}" \${IMAGE_REGISTRY}
+                    """
+
+                    currentBuild.displayName = "${REPOSITORY_BRANCH}"
+                }
+            }
+        }
         stage("Checkout code"){
             steps {
                 deleteDir()

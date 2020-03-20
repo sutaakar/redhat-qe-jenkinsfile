@@ -9,11 +9,15 @@ pipeline {
     }
     
     stages {
-        stage("Checks"){
+        stage("Init"){
             steps{
-                sh """
-                    podman login -u="\${REGISTRY_USER}" -p="\${REGISTRY_PASSWORD}" \${IMAGE_REGISTRY}
-                """
+                script {
+                    sh """
+                        podman login -u="\${REGISTRY_USER}" -p="\${REGISTRY_PASSWORD}" \${IMAGE_REGISTRY}
+                    """
+
+                    currentBuild.displayName = "${REPOSITORY_BRANCH}"
+                }
             }
         }
         stage("Checkout code"){
