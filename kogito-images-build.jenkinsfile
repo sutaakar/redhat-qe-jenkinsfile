@@ -36,6 +36,8 @@ pipeline {
                     sh """
                         export PATH=/home/hudson/cekit/bin:\$PATH
                         cekit --version
+
+                        ~/.cekit/cache/
                     """
                 }
             }
