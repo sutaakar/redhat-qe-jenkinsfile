@@ -30,7 +30,19 @@ pipeline {
                 }
             }
         }
-        
+        stage("Checkout pull request branch"){
+            when {
+                expression {
+                    return env.PULL_REQUEST != '';
+                }
+            }
+            steps {
+                dir("${WORKING_DIR}") {
+                    sh "git fetch origin pull/${PULL_REQUEST}/head:tempbranch"
+                    sh "git checkout tempbranch"
+                }
+            }
+        }
         stage("Setup node") {
             steps {
                 script {
@@ -168,7 +180,7 @@ pipeline {
 }
 
 void sendMail(){
-    mail to: "${EMAIL_REPORTING}", subject: "${currentBuild.currentResult} for job ${JOB_NAME}", body: "${BUILD_URL}"
+    mail to: "tradisso@redhat.com", subject: "${currentBuild.currentResult} for job ${JOB_NAME}", body: "${BUILD_URL}"
 }
 
 void installGo(){
