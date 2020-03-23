@@ -30,7 +30,22 @@ pipeline {
                 }
             }
         }
-        
+        stage("Checkout pull request branch"){
+            when {
+                expression {
+                    return env.PULL_REQUEST != '';
+                }
+            }
+            steps {
+                dir("${WORKING_DIR}") {
+                    sh "git fetch origin pull/${PULL_REQUEST}/head:tempbranch"
+                    sh "git checkout tempbranch"
+                }
+                script {
+                    currentBuild.displayName = "PR-${PULL_REQUEST}"
+                }
+            }
+        }
         stage("Setup node") {
             steps {
                 script {
