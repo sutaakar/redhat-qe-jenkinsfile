@@ -117,7 +117,7 @@ pipeline {
 }
 
 void sendMail(){
-    mail to: "tradisso@redhat.com", subject: "${currentBuild.currentResult} for job ${JOB_NAME}", body: "${BUILD_URL}"
+    mail to: "${EMAIL_REPORTING}", subject: "${currentBuild.currentResult} for job ${JOB_NAME}", body: "${BUILD_URL}"
 }
 
 void installGo(){
