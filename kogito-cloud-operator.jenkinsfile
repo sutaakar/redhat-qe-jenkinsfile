@@ -17,6 +17,7 @@ pipeline {
                     """
 
                     currentBuild.displayName = "${REPOSITORY_BRANCH}"
+                    addTestTagsToBuildDisplayName()
                 }
             }
         }
@@ -43,6 +44,7 @@ pipeline {
                 }
                 script {
                     currentBuild.displayName = "PR-${PULL_REQUEST}"
+                    addTestTagsToBuildDisplayName()
                 }
             }
         }
@@ -179,6 +181,12 @@ pipeline {
         always {
             deleteDir()
         }
+    }
+}
+
+void addTestTagsToBuildDisplayName(){
+    if(env.TEST_TAGS != '') {
+        currentBuild.displayName += " (${TEST_TAGS})"
     }
 }
 
