@@ -92,11 +92,11 @@ pipeline {
             steps {
                 dir("${WORKING_DIR}") {                    
                     sh """                        
-                        podman login -u="\${REGISTRY_USER}" -p="\${REGISTRY_PASSWORD}" \${IMAGE_REGISTRY}
+                        podman login -u="${REGISTRY_USER}" -p="\${REGISTRY_PASSWORD}" ${IMAGE_REGISTRY}
 
-                        IMAGE_NAME=\${IMAGE_REGISTRY}/\${IMAGE_GROUP}/kogito-cloud-operator
+                        IMAGE_NAME=${IMAGE_REGISTRY}/${IMAGE_GROUP}/kogito-cloud-operator
                         BUILT_IMAGE=`cat deploy/operator.yaml | grep image: | awk -F':' '{print \$2\":\"\$3}' | tr -d ' '`
-                        FINAL_IMAGE="\${IMAGE_NAME}:\${REPOSITORY_BRANCH}"
+                        FINAL_IMAGE="\${IMAGE_NAME}:${getBuiltTag()}"
 
                         echo "Built Image: \${BUILT_IMAGE}"
                         echo "Image to use: \${FINAL_IMAGE}"
@@ -129,6 +129,10 @@ pipeline {
             deleteDir()
         }
     }
+}
+
+String getBuiltTag(){
+    return env.PULL_REQUEST != '' ? "PR-${PULL_REQUEST}" : "${REPOSITORY_BRANCH}"
 }
 
 void sendMail(){
