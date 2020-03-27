@@ -87,6 +87,11 @@ pipeline {
         }
 
         stage("Run smoke tests"){
+            when {
+                expression {
+                    return !env.SKIP_SMOKE;
+                }
+            }
             steps {
                 dir("${WORKING_DIR}") {
                     sh """
