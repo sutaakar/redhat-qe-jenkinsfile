@@ -15,9 +15,9 @@ pipeline {
                     sh """
                         podman login -u="\${REGISTRY_USER}" -p="\${REGISTRY_PASSWORD}" \${IMAGE_REGISTRY}
                     """
-
-                    currentBuild.displayName = "${REPOSITORY_BRANCH}"
-                    addTestTagsToBuildDisplayName()
+                    
+                    // Calculate build display name
+                    setBuildDisplayName()
                 }
             }
         }
@@ -41,10 +41,6 @@ pipeline {
                 dir("${WORKING_DIR}") {
                     sh "git fetch origin pull/${PULL_REQUEST}/head:tempbranch"
                     sh "git checkout tempbranch"
-                }
-                script {
-                    currentBuild.displayName = "PR-${PULL_REQUEST}"
-                    addTestTagsToBuildDisplayName()
                 }
             }
         }
@@ -112,7 +108,7 @@ pipeline {
                         podman tag \${BUILT_IMAGE} \${IMAGE_NAME}:\${BUILD}
                         podman push \${IMAGE_NAME}:\${BUILD}
                         
-                        make run-smoke-tests ci="\${NAMESPACE_PREFIX}-smoke" concurrent=\${CONCURRENT_TESTS} tags="\${TEST_TAGS}" operator_image=\${IMAGE_NAME} operator_tag=\${BUILD} maven_mirror=\${MAVEN_MIRROR_URL} build_image_version=\${BUILD_IMAGE_VERSION} services_image_version=\${SERVICES_IMAGE_VERSION} examples_uri=\${EXAMPLES_URI} examples_ref=\${EXAMPLES_REF} load_factor=\${LOAD_FACTOR}
+                        make run-smoke-tests ci="\${NAMESPACE_PREFIX}-smoke" concurrent=\${CONCURRENT_TESTS} tags="\${TEST_TAGS}" operator_image=\${IMAGE_NAME} operator_tag=\${BUILD} maven_mirror=\${MAVEN_MIRROR_URL} build_image_version=\${BUILD_IMAGE_VERSION} services_image_version=\${SERVICES_IMAGE_VERSION} examples_uri=\${EXAMPLES_URI} examples_ref=\${EXAMPLES_REF} load_factor=\${LOAD_FACTOR} keep_namespace=${KEEP_NAMESPACE}
                     """   
                 }
             }
@@ -148,7 +144,7 @@ pipeline {
                         podman tag \${BUILT_IMAGE} \${IMAGE_NAME}:\${BUILD}
                         podman push \${IMAGE_NAME}:\${BUILD}
                         
-                        make run-tests ci=\${NAMESPACE_PREFIX} concurrent=\${CONCURRENT_TESTS} tags="\${TEST_TAGS}" operator_image=\${IMAGE_NAME} operator_tag=\${BUILD} maven_mirror=\${MAVEN_MIRROR_URL} build_image_version=\${BUILD_IMAGE_VERSION} services_image_version=\${SERVICES_IMAGE_VERSION} examples_uri=\${EXAMPLES_URI} examples_ref=\${EXAMPLES_REF} load_factor=\${LOAD_FACTOR}
+                        make run-tests ci=\${NAMESPACE_PREFIX} concurrent=\${CONCURRENT_TESTS} tags="\${TEST_TAGS}" operator_image=\${IMAGE_NAME} operator_tag=\${BUILD} maven_mirror=\${MAVEN_MIRROR_URL} build_image_version=\${BUILD_IMAGE_VERSION} services_image_version=\${SERVICES_IMAGE_VERSION} examples_uri=\${EXAMPLES_URI} examples_ref=\${EXAMPLES_REF} load_factor=\${LOAD_FACTOR} keep_namespace=${KEEP_NAMESPACE}
                     """   
                 }
             }
@@ -184,10 +180,17 @@ pipeline {
     }
 }
 
-void addTestTagsToBuildDisplayName(){
-    if(env.TEST_TAGS != '') {
-        currentBuild.displayName += " (${TEST_TAGS})"
+void setBuildDisplayName(){
+    displayName = ""
+    if(env.PULL_REQUEST != '') {
+        displayName = "PR-${PULL_REQUEST}"
+    } else {
+        displayName = "${REPOSITORY_BRANCH}"
     }
+    if(env.TEST_TAGS != '') {
+        displayName += " (${TEST_TAGS})"
+    }
+    currentBuild.displayName = displayName
 }
 
 void sendMail(){
