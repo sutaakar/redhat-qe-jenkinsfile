@@ -127,7 +127,12 @@ pipeline {
             }
         }
         
-        stage("Run BDD tests"){
+        stage("Run Full tests"){
+            when {
+                expression {
+                    return !env.SKIP_FULL;
+                }
+            }
             steps {
                 dir("${WORKING_DIR}") {
                     sh """
