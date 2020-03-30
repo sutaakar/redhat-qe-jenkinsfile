@@ -89,7 +89,7 @@ pipeline {
         stage("Run smoke tests"){
             when {
                 expression {
-                    return !env.SKIP_SMOKE;
+                    return "${SKIP_SMOKE}" == "false";
                 }
             }
             steps {
@@ -130,7 +130,7 @@ pipeline {
         stage("Run Full tests"){
             when {
                 expression {
-                    return !env.SKIP_FULL;
+                    return "${SKIP_FULL}" == "false";
                 }
             }
             steps {
