@@ -5,7 +5,7 @@ pipeline {
     
     environment {
         WORKING_DIR = "kogito-cloud-operator"
-        GO_ENV_FILE = "${WORKSPACE}/.go-env"
+        ENV_FILE = "${WORKSPACE}/.env"
     }
     
     stages {
@@ -13,11 +13,16 @@ pipeline {
             steps{
                 script {
                     sh """
-                        podman login -u="\${REGISTRY_USER}" -p="\${REGISTRY_PASSWORD}" \${IMAGE_REGISTRY}
+                        podman login -u="${REGISTRY_USER}" -p="\${REGISTRY_PASSWORD}" ${IMAGE_REGISTRY}
                     """
                     
                     // Calculate build display name
                     setBuildDisplayName()
+                    
+                    // Temporary fix until java is set to version 11 by default
+                    if (params.JAVA_HOME != "") {
+                        env.JAVA_HOME = params.JAVA_HOME
+                    }
                 }
             }
         }
@@ -27,7 +32,6 @@ pipeline {
                 sh "rm -rf ${WORKING_DIR} && mkdir -p ${WORKING_DIR}"
                 dir("${WORKING_DIR}") {
                     git url: "${REPOSITORY_URL}", branch: "${REPOSITORY_BRANCH}"
-                    sh "ls -al"
                 }
             }
         }
@@ -50,15 +54,17 @@ pipeline {
                     installGo()
                     installOperatorSDK()
                     installOpenshiftClient()
+                    installMaven()
                     
                     sh """
-                        . ${GO_ENV_FILE}
+                        . ${ENV_FILE}
                         
                         go version
                         hg version
                         python2 --version
                         operator-sdk version
                         oc version
+                        mvn --version
                     """
                 }
             }
@@ -68,7 +74,7 @@ pipeline {
             steps {
                 dir("${WORKING_DIR}") {
                     sh """
-                        . ${GO_ENV_FILE}
+                        . ${ENV_FILE}
                         make image_builder=podman
                     """
                 }
@@ -79,8 +85,20 @@ pipeline {
             steps {
                 dir("${WORKING_DIR}") {
                     sh """
-                        . ${GO_ENV_FILE}
+                        . ${ENV_FILE}
                         make build-cli
+                    """
+                }
+            }
+        }
+
+        stage("Deploy operator image"){
+            steps {
+                dir("${WORKING_DIR}") {                    
+                    sh """                        
+                        podman login -u="${REGISTRY_USER}" -p="\${REGISTRY_PASSWORD}" ${IMAGE_REGISTRY}
+                        podman tag ${getOperatorBuiltImageTaggedName()} ${getOperatorImageTaggedName()}
+                        podman push ${getOperatorImageTaggedName()}
                     """
                 }
             }
@@ -89,31 +107,18 @@ pipeline {
         stage("Run smoke tests"){
             when {
                 expression {
-                    return "${SKIP_SMOKE}" == "false";
+                    return !params.SKIP_SMOKE;
                 }
             }
             steps {
                 dir("${WORKING_DIR}") {
                     sh """
                         # Log into OpenShift so kubeconfig file is created
-                        oc login \${OPENSHIFT_API_URL} -u \${OPENSHIFT_USER} -p \${OPENSHIFT_PASSWORD} --insecure-skip-tls-verify
-                        podman login -u="\${REGISTRY_USER}" -p="\${REGISTRY_PASSWORD}" \${IMAGE_REGISTRY}
-                    """
-                    
-                    sh """
-                        . ${GO_ENV_FILE}
+                        oc login ${OPENSHIFT_API_URL} -u ${OPENSHIFT_USER} -p \${OPENSHIFT_PASSWORD} --insecure-skip-tls-verify
+
+                        . ${ENV_FILE}
                         
-                        BUILD=`echo \$RANDOM`
-                        export IMAGE_NAME=\${IMAGE_REGISTRY}/\${IMAGE_GROUP}/kogito-cloud-operator
-                        echo 'Image to use: \${IMAGE_NAME}:\${BUILD}'
-                        
-                        BUILT_IMAGE=`cat deploy/operator.yaml | grep image: | awk -F':' '{print \$2\":\"\$3}' | tr -d ' '`
-                        echo 'BUILT_IMAGE = \${BUILT_IMAGE}'
-                        
-                        podman tag \${BUILT_IMAGE} \${IMAGE_NAME}:\${BUILD}
-                        podman push \${IMAGE_NAME}:\${BUILD}
-                        
-                        make run-smoke-tests ci="\${NAMESPACE_PREFIX}-smoke" concurrent=\${CONCURRENT_TESTS} tags="\${TEST_TAGS}" operator_image=\${IMAGE_NAME} operator_tag=\${BUILD} maven_mirror=\${MAVEN_MIRROR_URL} build_image_version=\${BUILD_IMAGE_VERSION} services_image_version=\${SERVICES_IMAGE_VERSION} examples_uri=\${EXAMPLES_URI} examples_ref=\${EXAMPLES_REF} load_factor=\${LOAD_FACTOR} keep_namespace=${KEEP_NAMESPACE}
+                        make run-smoke-tests ci="${NAMESPACE_PREFIX}-smoke" concurrent=${CONCURRENT_TESTS} tags="${TEST_TAGS}" operator_image=${getOperatorImageName()} operator_tag=${getOperatorImageTag()} maven_mirror=${MAVEN_MIRROR_URL} build_image_version=${BUILD_IMAGE_VERSION} services_image_version=${SERVICES_IMAGE_VERSION} examples_uri=${EXAMPLES_URI} examples_ref=${EXAMPLES_REF} load_factor=${LOAD_FACTOR} keep_namespace=${KEEP_NAMESPACE}
                     """   
                 }
             }
@@ -130,31 +135,18 @@ pipeline {
         stage("Run Full tests"){
             when {
                 expression {
-                    return "${SKIP_FULL}" == "false";
+                    return !params.SKIP_FULL;
                 }
             }
             steps {
                 dir("${WORKING_DIR}") {
                     sh """
                         # Log into OpenShift so kubeconfig file is created
-                        oc login \${OPENSHIFT_API_URL} -u \${OPENSHIFT_USER} -p \${OPENSHIFT_PASSWORD} --insecure-skip-tls-verify
-                        podman login -u="\${REGISTRY_USER}" -p="\${REGISTRY_PASSWORD}" \${IMAGE_REGISTRY}
-                    """
-                    
-                    sh """
-                        . ${GO_ENV_FILE}
+                        oc login ${OPENSHIFT_API_URL} -u ${OPENSHIFT_USER} -p \${OPENSHIFT_PASSWORD} --insecure-skip-tls-verify
                         
-                        BUILD=`echo \$RANDOM`
-                        export IMAGE_NAME=\${IMAGE_REGISTRY}/\${IMAGE_GROUP}/kogito-cloud-operator
-                        echo 'Image to use: \${IMAGE_NAME}:\${BUILD}'
+                        . ${ENV_FILE}
                         
-                        BUILT_IMAGE=`cat deploy/operator.yaml | grep image: | awk -F':' '{print \$2\":\"\$3}' | tr -d ' '`
-                        echo 'BUILT_IMAGE = \${BUILT_IMAGE}'
-                        
-                        podman tag \${BUILT_IMAGE} \${IMAGE_NAME}:\${BUILD}
-                        podman push \${IMAGE_NAME}:\${BUILD}
-                        
-                        make run-tests ci=\${NAMESPACE_PREFIX} concurrent=\${CONCURRENT_TESTS} tags="\${TEST_TAGS}" operator_image=\${IMAGE_NAME} operator_tag=\${BUILD} maven_mirror=\${MAVEN_MIRROR_URL} build_image_version=\${BUILD_IMAGE_VERSION} services_image_version=\${SERVICES_IMAGE_VERSION} examples_uri=\${EXAMPLES_URI} examples_ref=\${EXAMPLES_REF} load_factor=\${LOAD_FACTOR} keep_namespace=${KEEP_NAMESPACE}
+                        make run-tests ci=${NAMESPACE_PREFIX} concurrent=${CONCURRENT_TESTS} tags="${TEST_TAGS}" operator_image=${getOperatorImageName()} operator_tag=${getOperatorImageTag()} maven_mirror=${MAVEN_MIRROR_URL} build_image_version=${BUILD_IMAGE_VERSION} services_image_version=${SERVICES_IMAGE_VERSION} examples_uri=${EXAMPLES_URI} examples_ref=${EXAMPLES_REF} load_factor=${LOAD_FACTOR} keep_namespace=${KEEP_NAMESPACE}
                     """   
                 }
             }
@@ -185,7 +177,9 @@ pipeline {
             }
         }
         always {
-            deleteDir()
+            dir("${WORKING_DIR}") {
+                deleteDir()
+            }
         }
     }
 }
@@ -201,6 +195,22 @@ void setBuildDisplayName(){
         displayName += " (${TEST_TAGS})"
     }
     currentBuild.displayName = displayName
+}
+
+String getOperatorBuiltImageTaggedName() {
+    return sh(script: "cat deploy/operator.yaml | grep image: | awk -F':' '{print \$2\":\"\$3}' | tr -d ' '", returnStdout: true).trim()
+}
+
+String getOperatorImageTaggedName() {
+    return "${getOperatorImageName()}:${getOperatorImageTag()}"
+}
+
+String getOperatorImageName() {
+    return "${IMAGE_REGISTRY}/${IMAGE_GROUP}/kogito-cloud-operator"
+}
+
+String getOperatorImageTag(){
+    return env.PULL_REQUEST != '' ? "PR-${PULL_REQUEST}" : "${REPOSITORY_BRANCH}"
 }
 
 void sendMail(){
@@ -220,27 +230,27 @@ void installGo(){
 
     // Set go env variables into env file
     sh '''
-        rm -rf ${GO_ENV_FILE}
+        rm -rf ${ENV_FILE}
 
-        echo \"export GOROOT=${WORKSPACE}/go\" >> ${GO_ENV_FILE}
+        echo \"export GOROOT=${WORKSPACE}/go\" >> ${ENV_FILE}
 
         mkdir -p ${WORKSPACE}/go-${GO_VERSION}
         mkdir -p ${WORKSPACE}/go-${GO_VERSION}/.cache
         
-        echo \"export GOCACHE=${WORKSPACE}/go-${GO_VERSION}/.cache\" >> ${GO_ENV_FILE}
-        echo \"export GOPATH=${WORKSPACE}/go-${GO_VERSION}\" >> ${GO_ENV_FILE}
+        echo \"export GOCACHE=${WORKSPACE}/go-${GO_VERSION}/.cache\" >> ${ENV_FILE}
+        echo \"export GOPATH=${WORKSPACE}/go-${GO_VERSION}\" >> ${ENV_FILE}
         
-        . ${GO_ENV_FILE}
+        . ${ENV_FILE}
         
-        echo 'export PATH=\${PATH}:\${GOROOT}/bin' >> ${GO_ENV_FILE}
-        echo 'export PATH=\${PATH}:\${GOPATH}/bin' >> ${GO_ENV_FILE}
+        echo 'export PATH=\${PATH}:\${GOROOT}/bin' >> ${ENV_FILE}
+        echo 'export PATH=\${PATH}:\${GOPATH}/bin' >> ${ENV_FILE}
         
-        cat ${GO_ENV_FILE}
+        cat ${ENV_FILE}
     '''
 
     // Install Go dependencies
     sh """
-        . ${GO_ENV_FILE}
+        . ${ENV_FILE}
         export GO111MODULE=on
         go get github.com/gobuffalo/packr/v2/packr2
         go get -u golang.org/x/lint/golint
@@ -273,5 +283,18 @@ void installOpenshiftClient(){
         wget \${PACKAGE_URL}
         tar xzf ./\${PACKAGE_NAME}
         mv oc \${OSE_CLIENT_DIR}
+    """
+}
+
+void installMaven(){
+    sh """       
+        rm -rf \$HOME/bin/maven
+        RELEASE_VERSION=3.6.3
+        curl -LO https://mirrors.ocf.berkeley.edu/apache/maven/maven-3/\${RELEASE_VERSION}/binaries/apache-maven-\${RELEASE_VERSION}-bin.tar.gz
+        tar xzf apache-maven-\${RELEASE_VERSION}-bin.tar.gz
+        
+        echo \"export MVN_HOME=${WORKSPACE}/apache-maven-\${RELEASE_VERSION}\" >> ${ENV_FILE}
+        . ${ENV_FILE}
+        echo 'export PATH=\${PATH}:\${MVN_HOME}/bin' >> ${ENV_FILE}
     """
 }
