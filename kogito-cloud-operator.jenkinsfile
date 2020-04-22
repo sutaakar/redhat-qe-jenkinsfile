@@ -1,11 +1,15 @@
 pipeline {
     agent {
-        label "podman"
+        label "${AGENT_LABEL}"
     }
     
     environment {
         WORKING_DIR = "kogito-cloud-operator"
         ENV_FILE = "${WORKSPACE}/.env"
+
+        MAVEN_RELEASE_VERSION = "3.6.3"
+        GRAALVM_RELEASE_VERSION = "19.3.1"
+        OPERATOR_SDK_RELEASE_VERSION = "v0.15.1"
     }
     
     stages {
@@ -18,11 +22,6 @@ pipeline {
                     
                     // Calculate build display name
                     setBuildDisplayName()
-                    
-                    // Temporary fix until java is set to version 11 by default
-                    if (params.JAVA_HOME != "") {
-                        env.JAVA_HOME = params.JAVA_HOME
-                    }
                 }
             }
         }
@@ -54,6 +53,7 @@ pipeline {
                     installGo()
                     installOperatorSDK()
                     installOpenshiftClient()
+                    installGraalVMWithNative()
                     installMaven()
                     
                     sh """
@@ -64,6 +64,12 @@ pipeline {
                         python2 --version
                         operator-sdk version
                         oc version
+                        
+                        echo \$JAVA_HOME
+                        echo \$GRAALVM_HOME
+                        
+                        java -version
+                        native-image --version
                         mvn --version
                     """
                 }
@@ -265,11 +271,8 @@ void installOperatorSDK(){
         
         # Install operator-sdk 0.15.1
         rm -rf \$HOME/bin/operator-sdk
-        RELEASE_VERSION=v0.15.1
-        curl -LO https://github.com/operator-framework/operator-sdk/releases/download/\${RELEASE_VERSION}/operator-sdk-\${RELEASE_VERSION}-x86_64-linux-gnu
-        #curl -LO https://github.com/operator-framework/operator-sdk/releases/download/\${RELEASE_VERSION}/operator-sdk-\${RELEASE_VERSION}-x86_64-linux-gnu.asc
-        #gpg --verify operator-sdk-\${RELEASE_VERSION}-x86_64-linux-gnu.asc
-        chmod +x operator-sdk-\${RELEASE_VERSION}-x86_64-linux-gnu && mkdir -p \$HOME/bin/ && cp operator-sdk-\${RELEASE_VERSION}-x86_64-linux-gnu \$HOME/bin/operator-sdk && rm operator-sdk-\${RELEASE_VERSION}-x86_64-linux-gnu
+        curl -LO https://github.com/operator-framework/operator-sdk/releases/download/\${OPERATOR_SDK_RELEASE_VERSION}/operator-sdk-\${OPERATOR_SDK_RELEASE_VERSION}-x86_64-linux-gnu
+        chmod +x operator-sdk-\${OPERATOR_SDK_RELEASE_VERSION}-x86_64-linux-gnu && mkdir -p \$HOME/bin/ && cp operator-sdk-\${OPERATOR_SDK_RELEASE_VERSION}-x86_64-linux-gnu \$HOME/bin/operator-sdk && rm operator-sdk-\${OPERATOR_SDK_RELEASE_VERSION}-x86_64-linux-gnu
     """
 }
 
@@ -286,14 +289,30 @@ void installOpenshiftClient(){
     """
 }
 
+void installGraalVMWithNative(){
+    echo "installGraalVMWithNative"
+    sh """       
+        rm -rf ${WORKSPACE}/graalvm*
+        curl -LO https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-\${GRAALVM_RELEASE_VERSION}/graalvm-ce-java11-linux-amd64-\${GRAALVM_RELEASE_VERSION}.tar.gz
+        tar xzf graalvm-ce-java11-linux-amd64-\${GRAALVM_RELEASE_VERSION}.tar.gz
+        
+        echo \"export GRAALVM_HOME=${WORKSPACE}/graalvm-ce-java11-\${GRAALVM_RELEASE_VERSION}\" >> ${ENV_FILE}
+        echo \"export JAVA_HOME=${WORKSPACE}/graalvm-ce-java11-\${GRAALVM_RELEASE_VERSION}\" >> ${ENV_FILE}
+        . ${ENV_FILE}
+        echo 'export PATH=\${GRAALVM_HOME}/bin:\${PATH}' >> ${ENV_FILE}
+        . ${ENV_FILE}
+
+        gu install native-image
+    """
+}
+
 void installMaven(){
     sh """       
         rm -rf \$HOME/bin/maven
-        RELEASE_VERSION=3.6.3
-        curl -LO https://mirrors.ocf.berkeley.edu/apache/maven/maven-3/\${RELEASE_VERSION}/binaries/apache-maven-\${RELEASE_VERSION}-bin.tar.gz
-        tar xzf apache-maven-\${RELEASE_VERSION}-bin.tar.gz
+        curl -LO https://mirrors.ocf.berkeley.edu/apache/maven/maven-3/\${MAVEN_RELEASE_VERSION}/binaries/apache-maven-\${MAVEN_RELEASE_VERSION}-bin.tar.gz
+        tar xzf apache-maven-\${MAVEN_RELEASE_VERSION}-bin.tar.gz
         
-        echo \"export MVN_HOME=${WORKSPACE}/apache-maven-\${RELEASE_VERSION}\" >> ${ENV_FILE}
+        echo \"export MVN_HOME=${WORKSPACE}/apache-maven-\${MAVEN_RELEASE_VERSION}\" >> ${ENV_FILE}
         . ${ENV_FILE}
         echo 'export PATH=\${PATH}:\${MVN_HOME}/bin' >> ${ENV_FILE}
     """
