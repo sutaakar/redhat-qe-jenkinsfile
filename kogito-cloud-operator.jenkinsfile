@@ -1,4 +1,46 @@
 pipeline {
+    parameters {
+        string(name: 'AGENT_LABEL', defaultValue: 'podman', description: 'Agent to use')
+        string(name: 'EMAIL_REPORTING', defaultValue: '', description: 'Where to send the results ?')
+         
+        // Container registry
+        booleanParam(name: 'USE_OPENSHIFT_INTERNAL_REGISTRY', defaultValue: true, description: 'If using the Openshift registry')
+        string(name: 'IMAGE_GROUP', defaultValue: 'openshift', description: 'In which namespace should your image be pushed ?')
+
+        string(name: 'IMAGE_REGISTRY', defaultValue: 'quay.io', description: 'If `USE_OPENSHIFT_INTERNAL_REGISTRY` is false')
+        string(name: 'REGISTRY_USER', defaultValue: 'user', description: 'If `USE_OPENSHIFT_INTERNAL_REGISTRY` is false')
+        string(name: 'REGISTRY_PASSWORD', defaultValue: '', description: 'If `USE_OPENSHIFT_INTERNAL_REGISTRY` is false')
+
+        // Openshift
+        string(name: 'OPENSHIFT_URL_DOMAIN', defaultValue: 'openshift.com', description: 'Openshift url suffix. All other openshift url(s) will be setup according to that one')
+        string(name: 'OPENSHIFT_USER', defaultValue: 'admin', description: 'Openshift user')
+        string(name: 'OPENSHIFT_PASSWORD', defaultValue: '', description: 'Openshift password')
+
+        // Repository
+        string(name: 'REPOSITORY_URL', defaultValue: 'https://github.com/kiegroup/kogito-cloud-operator.git', description: 'Repository to use')
+        string(name: 'REPOSITORY_BRANCH', defaultValue: 'master', description: 'Which branch ?')
+        string(name: 'PULL_REQUEST', defaultValue: '', description: 'If working from master, you can checkout a specific pull request')
+
+        // Pipeline parameters
+        booleanParam(name: 'SKIP_BUILD', defaultValue: false, description: 'To skip the build & deploy of operator/cli')
+        booleanParam(name: 'SKIP_SMOKE', defaultValue: false, description: 'To skip the smoke tests')
+        booleanParam(name: 'SKIP_FULL', defaultValue: false, description: 'To skip the full tests')
+        
+        // Test parameters
+        string(name: 'NAMESPACE_PREFIX', defaultValue: 'jenkins', description: 'Prefix to use for namespace creation')
+        string(name: 'CONCURRENT_TESTS', defaultValue: '3', description: 'How many concurrent tests ?')
+        string(name: 'TEST_TAGS', defaultValue: '', description: 'Which tags for the tests ?')
+        booleanParam(name: 'LOAD_DEFAULT_CONFIG', defaultValue: true, description: 'Load the test default config.')
+        string(name: 'MAVEN_MIRROR_URL', defaultValue: '', description: 'If you want to use a Maven Mirror Url')
+        string(name: 'BUILD_IMAGE_VERSION', defaultValue: '', description: 'Build image(s) version')
+        string(name: 'SERVICES_IMAGE_VERSION', defaultValue: '', description: 'Services image(s) version')
+        string(name: 'EXAMPLES_URI', defaultValue: '', description: 'Examples URI to test with')
+        string(name: 'EXAMPLES_REF', defaultValue: '', description: 'Examples reference to test with')
+        string(name: 'LOAD_FACTOR', defaultValue: '2', description: 'How overloaded is your cluster ?')
+        booleanParam(name: 'KEEP_NAMESPACE', defaultValue: false, description: 'In case you want to keep the namespace(s) after the test(s) ran. WARNING: this can be big for your cluster as all created resources will stay on it.')
+
+    }
+
     agent {
         label "${AGENT_LABEL}"
     }
@@ -10,18 +52,55 @@ pipeline {
         MAVEN_RELEASE_VERSION = "3.6.3"
         GRAALVM_RELEASE_VERSION = "19.3.1"
         OPERATOR_SDK_RELEASE_VERSION = "v0.15.1"
+
+        // Just for reference, env variables we are setting in `Initialize` step
+        // keep commented as it needs to be changed (if set here, then it is unmutable ...)
+        // TEST_PARAMS = "essai"
+        // OPENSHIFT_API_URL = ""
+        // INTERNAL_IMAGE_REGISTRY = ""
+        // EXTERNAL_IMAGE_REGISTRY = ""
     }
     
     stages {
         stage("Init"){
             steps{
-                script {
-                    sh """
-                        podman login -u="${REGISTRY_USER}" -p="\${REGISTRY_PASSWORD}" ${IMAGE_REGISTRY}
-                    """
-                    
+                script {                    
                     // Calculate build display name
                     setBuildDisplayName()
+
+                    // Set Openshift & registry urls
+                    env.OPENSHIFT_API_URL = "https://api.${params.OPENSHIFT_URL_DOMAIN}:6443"
+                    if (params.USE_OPENSHIFT_INTERNAL_REGISTRY){
+                        env.INTERNAL_IMAGE_REGISTRY = "image-registry.openshift-image-registry.svc:5000"
+                        env.EXTERNAL_IMAGE_REGISTRY = "default-route-openshift-image-registry.apps.${params.OPENSHIFT_URL_DOMAIN}"
+                    } else {
+                        env.INTERNAL_IMAGE_REGISTRY = "${params.IMAGE_REGISTRY}"
+                        env.EXTERNAL_IMAGE_REGISTRY = "${params.IMAGE_REGISTRY}"
+                    }
+
+                    // Test params
+                    env.TEST_PARAMS=""
+                    // In case of SKIP_BUILD, we have no CLI, so we should use CR only in tests
+                    if (params.SKIP_BUILD) {  addTestParamFromValue("cr_deployment_only", "true") }
+                    addTestParamFromValue("operator_image", getOperatorImageName(env.INTERNAL_IMAGE_REGISTRY))
+                    addTestParamFromValue("operator_tag", getOperatorImageTag())
+
+                    addTestParamFromParamIfExist("ci", "NAMESPACE_PREFIX")
+                    addTestParamFromParamIfExist("concurrent", "CONCURRENT_TESTS")
+                    addTestParamFromParamIfExist("tags", "TEST_TAGS")
+                    if (params.LOAD_DEFAULT_CONFIG) { addTestParamFromValue("load_default_config", "true") }
+                    addTestParamFromParamIfExist("maven_mirror", "MAVEN_MIRROR_URL")
+                    addTestParamFromParamIfExist("build_image_version", "BUILD_IMAGE_VERSION")
+                    addTestParamFromParamIfExist("services_image_version", "SERVICES_IMAGE_VERSION")
+                    addTestParamFromParamIfExist("examples_uri", "EXAMPLES_URI")
+                    addTestParamFromParamIfExist("examples_ref", "EXAMPLES_REF")
+                    addTestParamFromParamIfExist("load_factor", "LOAD_FACTOR")
+                    if (params.KEEP_NAMESPACE) { addTestParamFromValue("keep_namespace", "true") }
+
+                    echo "Test parameters = ${TEST_PARAMS}"
+                    echo "Openshift url = ${OPENSHIFT_API_URL}"
+                    echo "Internal openshift registry url = ${INTERNAL_IMAGE_REGISTRY}"
+                    echo "External openshift registry url${EXTERNAL_IMAGE_REGISTRY}"
                 }
             }
         }
@@ -72,39 +151,53 @@ pipeline {
                         native-image --version
                         mvn --version
                     """
+
+                    loginOpenshift()
+                    loginContainerRegistry()
                 }
             }
         }
         
         stage("Build operator image"){
+            when {
+                expression {
+                    return !params.SKIP_BUILD;
+                }
+            }
             steps {
                 dir("${WORKING_DIR}") {
-                    sh """
-                        . ${ENV_FILE}
-                        make image_builder=podman
-                    """
+                    sh ". ${ENV_FILE} && make image_builder=podman"
                 }
             }
         }
         
         stage("Build CLI"){
+            when {
+                expression {
+                    return !params.SKIP_BUILD;
+                }
+            }
             steps {
                 dir("${WORKING_DIR}") {
-                    sh """
-                        . ${ENV_FILE}
-                        make build-cli
-                    """
+                    sh ". ${ENV_FILE} && make build-cli"
                 }
             }
         }
 
         stage("Deploy operator image"){
+            when {
+                expression {
+                    return !params.SKIP_BUILD;
+                }
+            }
             steps {
                 dir("${WORKING_DIR}") {                    
+                    loginOpenshift()
+                    loginContainerRegistry()
+
                     sh """                        
-                        podman login -u="${REGISTRY_USER}" -p="\${REGISTRY_PASSWORD}" ${IMAGE_REGISTRY}
-                        podman tag ${getOperatorBuiltImageTaggedName()} ${getOperatorImageTaggedName()}
-                        podman push ${getOperatorImageTaggedName()}
+                        podman tag ${getOperatorBuiltImageTaggedName()} ${getOperatorImageTaggedName(env.EXTERNAL_IMAGE_REGISTRY)}
+                        podman push --tls-verify=false ${getOperatorImageTaggedName(env.EXTERNAL_IMAGE_REGISTRY)}
                     """
                 }
             }
@@ -118,14 +211,8 @@ pipeline {
             }
             steps {
                 dir("${WORKING_DIR}") {
-                    sh """
-                        # Log into OpenShift so kubeconfig file is created
-                        oc login ${OPENSHIFT_API_URL} -u ${OPENSHIFT_USER} -p \${OPENSHIFT_PASSWORD} --insecure-skip-tls-verify
-
-                        . ${ENV_FILE}
-                        
-                        make run-smoke-tests load_default_config=${LOAD_DEFAULT_CONFIG} ci="${NAMESPACE_PREFIX}-smoke" concurrent=${CONCURRENT_TESTS} tags="${TEST_TAGS}" operator_image=${getOperatorImageName()} operator_tag=${getOperatorImageTag()} maven_mirror=${MAVEN_MIRROR_URL} build_image_version=${BUILD_IMAGE_VERSION} services_image_version=${SERVICES_IMAGE_VERSION} examples_uri=${EXAMPLES_URI} examples_ref=${EXAMPLES_REF} load_factor=${LOAD_FACTOR} keep_namespace=${KEEP_NAMESPACE}
-                    """   
+                    loginOpenshift()
+                    sh ". ${ENV_FILE} && make run-smoke-tests ${TEST_PARAMS}"
                 }
             }
             post {
@@ -146,14 +233,8 @@ pipeline {
             }
             steps {
                 dir("${WORKING_DIR}") {
-                    sh """
-                        # Log into OpenShift so kubeconfig file is created
-                        oc login ${OPENSHIFT_API_URL} -u ${OPENSHIFT_USER} -p \${OPENSHIFT_PASSWORD} --insecure-skip-tls-verify
-                        
-                        . ${ENV_FILE}
-                        
-                        make run-tests load_default_config=${LOAD_DEFAULT_CONFIG} ci=${NAMESPACE_PREFIX} concurrent=${CONCURRENT_TESTS} tags="${TEST_TAGS}" operator_image=${getOperatorImageName()} operator_tag=${getOperatorImageTag()} maven_mirror=${MAVEN_MIRROR_URL} build_image_version=${BUILD_IMAGE_VERSION} services_image_version=${SERVICES_IMAGE_VERSION} examples_uri=${EXAMPLES_URI} examples_ref=${EXAMPLES_REF} load_factor=${LOAD_FACTOR} keep_namespace=${KEEP_NAMESPACE}
-                    """   
+                    loginOpenshift()
+                    sh ". ${ENV_FILE} && make run-tests ${TEST_PARAMS}"
                 }
             }
             post {
@@ -166,7 +247,7 @@ pipeline {
             }
         }
     }
-     post {
+    post {
         unstable {
             script {
                 sendMail()
@@ -190,6 +271,31 @@ pipeline {
     }
 }
 
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// utils
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+void addTestParamFromParamIfExist(String key, String envKey) {
+    if (params[envKey] != null && params[envKey] != "") {
+        addTestParamFromValue(key, "${params[envKey]}")
+    }
+}
+void addTestParamFromValue(String key, String value) {
+    env.TEST_PARAMS += " ${key}=\"${value}\""
+}
+
+void loginOpenshift(){
+    sh "oc login ${OPENSHIFT_API_URL} -u ${OPENSHIFT_USER} -p \${OPENSHIFT_PASSWORD} --insecure-skip-tls-verify"
+}
+
+void loginContainerRegistry() {
+    if (params.USE_OPENSHIFT_INTERNAL_REGISTRY) {
+        sh "podman login -u ${OPENSHIFT_USER} -p \$(oc whoami -t) --tls-verify=false ${EXTERNAL_IMAGE_REGISTRY}"
+    } else {
+        sh "podman login -u ${REGISTRY_USER} -p \${REGISTRY_PASSWORD} --tls-verify=false ${IMAGE_REGISTRY}"
+    }
+}
+
 void setBuildDisplayName(){
     displayName = ""
     if(env.PULL_REQUEST != '') {
@@ -207,12 +313,12 @@ String getOperatorBuiltImageTaggedName() {
     return sh(script: "cat deploy/operator.yaml | grep image: | awk -F':' '{print \$2\":\"\$3}' | tr -d ' '", returnStdout: true).trim()
 }
 
-String getOperatorImageTaggedName() {
-    return "${getOperatorImageName()}:${getOperatorImageTag()}"
+String getOperatorImageTaggedName(String registry) {
+    return "${getOperatorImageName(registry)}:${getOperatorImageTag()}"
 }
 
-String getOperatorImageName() {
-    return "${IMAGE_REGISTRY}/${IMAGE_GROUP}/kogito-cloud-operator"
+String getOperatorImageName(String registry) {
+    return "${registry}/${IMAGE_GROUP}/kogito-cloud-operator"
 }
 
 String getOperatorImageTag(){
@@ -222,6 +328,11 @@ String getOperatorImageTag(){
 void sendMail(){
     mail to: "${EMAIL_REPORTING}", subject: "${currentBuild.currentResult} for job ${JOB_NAME}", body: "${BUILD_URL}"
 }
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// Setup node
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
 
 void installGo(){
     // Download and install Go binary
@@ -308,7 +419,7 @@ void installGraalVMWithNative(){
 
 void installMaven(){
     sh """       
-        rm -rf \$HOME/bin/maven
+        rm -rf ${WORKSPACE}/apache-maven-*
         curl -LO https://mirrors.ocf.berkeley.edu/apache/maven/maven-3/\${MAVEN_RELEASE_VERSION}/binaries/apache-maven-\${MAVEN_RELEASE_VERSION}-bin.tar.gz
         tar xzf apache-maven-\${MAVEN_RELEASE_VERSION}-bin.tar.gz
         
