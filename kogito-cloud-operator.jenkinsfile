@@ -40,7 +40,7 @@ pipeline {
         string(name: 'SERVICES_IMAGE_NAME_SUFFIX', defaultValue: '', description: 'Services image(s) name suffix')
         string(name: 'SERVICES_IMAGE_VERSION', defaultValue: '', description: 'Services image(s) version')
         string(name: 'EXAMPLES_URI', defaultValue: '', description: 'Examples URI to test with')
-        string(name: 'EXAMPLES_REF', defaultValue: '', description: 'Examples reference to test with')
+        string(name: 'EXAMPLES_REF', defaultValue: 'master', description: 'Examples reference to test with')
         string(name: 'LOAD_FACTOR', defaultValue: '2', description: 'How overloaded is your cluster ?')
         booleanParam(name: 'KEEP_NAMESPACE', defaultValue: false, description: 'In case you want to keep the namespace(s) after the test(s) ran. WARNING: this can be big for your cluster as all created resources will stay on it.')
 
