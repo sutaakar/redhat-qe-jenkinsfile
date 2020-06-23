@@ -43,7 +43,7 @@ pipeline {
         string(name: 'EXAMPLES_REF', defaultValue: 'master', description: 'Examples reference to test with')
         string(name: 'LOAD_FACTOR', defaultValue: '2', description: 'How overloaded is your cluster ?')
         booleanParam(name: 'KEEP_NAMESPACE', defaultValue: false, description: 'In case you want to keep the namespace(s) after the test(s) ran. WARNING: this can be big for your cluster as all created resources will stay on it.')
-
+        booleanParam(name: 'CR_DEPLOYMENT_ONLY', defaultValue: false, description: 'Enable to run tests using CR deployment only.')
     }
 
     agent {
@@ -86,7 +86,7 @@ pipeline {
                     // Test params
                     env.TEST_PARAMS=""
                     // In case of SKIP_BUILD, we have no CLI, so we should use CR only in tests
-                    if (params.SKIP_BUILD) {  addTestParamFromValue("cr_deployment_only", "true") }
+                    if (params.SKIP_BUILD || params.CR_DEPLOYMENT_ONLY) {  addTestParamFromValue("cr_deployment_only", "true") }
                     addTestParamFromValue("operator_image", getOperatorImageName(env.INTERNAL_IMAGE_REGISTRY))
                     addTestParamFromValue("operator_tag", getOperatorImageTag())
 
