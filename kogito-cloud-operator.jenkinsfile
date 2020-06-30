@@ -1,6 +1,6 @@
 pipeline {
     parameters {
-        string(name: 'AGENT_LABEL', defaultValue: 'podman', description: 'Agent to use')
+        string(name: 'AGENT_LABEL', defaultValue: '', description: 'Agent to use')
         // need to be set as param directly in job config
         // string(name: 'EMAIL_REPORTING', defaultValue: '', description: 'Where to send the results ?')
          
@@ -22,28 +22,16 @@ pipeline {
         // Repository
         string(name: 'REPOSITORY_URL', defaultValue: 'https://github.com/kiegroup/kogito-cloud-operator.git', description: 'Repository to use')
         string(name: 'REPOSITORY_BRANCH', defaultValue: 'master', description: 'Which branch ?')
-        string(name: 'PULL_REQUEST', defaultValue: '', description: 'If working from master, you can checkout a specific pull request')
 
-        // Pipeline parameters
-        booleanParam(name: 'SKIP_BUILD', defaultValue: false, description: 'To skip the build & deploy of operator/cli')
-        booleanParam(name: 'SKIP_SMOKE', defaultValue: false, description: 'To skip the smoke tests')
-        booleanParam(name: 'SKIP_FULL', defaultValue: false, description: 'To skip the full tests')
-        
         // Test parameters
-        string(name: 'NAMESPACE_PREFIX', defaultValue: 'jenkins', description: 'Prefix to use for namespace creation')
-        string(name: 'CONCURRENT_TESTS', defaultValue: '3', description: 'How many concurrent tests ?')
         string(name: 'TEST_TAGS', defaultValue: '', description: 'Which tags for the tests ?')
         booleanParam(name: 'LOAD_DEFAULT_CONFIG', defaultValue: true, description: 'Load the test default config.')
         string(name: 'MAVEN_MIRROR_URL', defaultValue: '', description: 'If you want to use a Maven Mirror Url')
         string(name: 'BUILD_IMAGE_NAME_SUFFIX', defaultValue: 'nightly', description: 'Build image(s) name suffix')
         string(name: 'BUILD_IMAGE_VERSION', defaultValue: '', description: 'Build image(s) version')
-        string(name: 'SERVICES_IMAGE_NAME_SUFFIX', defaultValue: 'nightly', description: 'Services image(s) name suffix')
-        string(name: 'SERVICES_IMAGE_VERSION', defaultValue: '', description: 'Services image(s) version')
         string(name: 'EXAMPLES_URI', defaultValue: '', description: 'Examples URI to test with')
         string(name: 'EXAMPLES_REF', defaultValue: 'master', description: 'Examples reference to test with')
-        string(name: 'LOAD_FACTOR', defaultValue: '2', description: 'How overloaded is your cluster ?')
-        booleanParam(name: 'KEEP_NAMESPACE', defaultValue: false, description: 'In case you want to keep the namespace(s) after the test(s) ran. WARNING: this can be big for your cluster as all created resources will stay on it.')
-        booleanParam(name: 'CR_DEPLOYMENT_ONLY', defaultValue: false, description: 'Enable to run tests using CR deployment only.')
+        string(name: 'FEATURE', defaultValue: 'scripts/examples', description: 'Feature path to be executed.')
     }
 
     agent {
@@ -56,14 +44,7 @@ pipeline {
 
         MAVEN_RELEASE_VERSION = "3.6.3"
         GRAALVM_RELEASE_VERSION = "19.3.1"
-        OPERATOR_SDK_RELEASE_VERSION = "v0.15.1"
-
-        // Just for reference, env variables we are setting in `Initialize` step
-        // keep commented as it needs to be changed (if set here, then it is unmutable ...)
-        // TEST_PARAMS = "essai"
-        // OPENSHIFT_API_URL = ""
-        // INTERNAL_IMAGE_REGISTRY = ""
-        // EXTERNAL_IMAGE_REGISTRY = ""
+        OPERATOR_SDK_RELEASE_VERSION = "v0.18.2"
     }
     
     stages {
@@ -86,23 +67,25 @@ pipeline {
                     // Test params
                     env.TEST_PARAMS=""
                     // In case of SKIP_BUILD, we have no CLI, so we should use CR only in tests
-                    if (params.SKIP_BUILD || params.CR_DEPLOYMENT_ONLY) {  addTestParamFromValue("cr_deployment_only", "true") }
-                    addTestParamFromValue("operator_image", getOperatorImageName(env.INTERNAL_IMAGE_REGISTRY))
-                    addTestParamFromValue("operator_tag", getOperatorImageTag())
-
-                    addTestParamFromParamIfExist("ci", "NAMESPACE_PREFIX")
-                    addTestParamFromParamIfExist("concurrent", "CONCURRENT_TESTS")
+                    addTestParamFromValue("cr_deployment_only", "true")
+                    // Don't use cache, override it
+                    addTestParamFromValue("image_cache_mode", "never")
+                    addTestParamFromValue("build_image_version", "latest")
+                    addTestParamFromValue("disabled_crds_update", "true")
+                    addTestParamFromValue("container_engine", "podman")
+                    addTestParamFromValue("runtime_application_image_registry", env.EXTERNAL_IMAGE_REGISTRY)
                     addTestParamFromParamIfExist("tags", "TEST_TAGS")
                     if (params.LOAD_DEFAULT_CONFIG) { addTestParamFromValue("load_default_config", "true") }
                     addTestParamFromParamIfExist("maven_mirror", "MAVEN_MIRROR_URL")
                     addTestParamFromParamIfExist("build_image_name_suffix", "BUILD_IMAGE_NAME_SUFFIX")
                     addTestParamFromParamIfExist("build_image_version", "BUILD_IMAGE_VERSION")
-                    addTestParamFromParamIfExist("services_image_name_suffix", "SERVICES_IMAGE_NAME_SUFFIX")
-                    addTestParamFromParamIfExist("services_image_version", "SERVICES_IMAGE_VERSION")
+                    // Generated images will have same name suffix and version as build images
+                    addTestParamFromParamIfExist("runtime_application_image_name_suffix", "BUILD_IMAGE_NAME_SUFFIX")
+                    addTestParamFromParamIfExist("runtime_application_image_version", "BUILD_IMAGE_VERSION")
                     addTestParamFromParamIfExist("examples_uri", "EXAMPLES_URI")
                     addTestParamFromParamIfExist("examples_ref", "EXAMPLES_REF")
-                    addTestParamFromParamIfExist("load_factor", "LOAD_FACTOR")
-                    if (params.KEEP_NAMESPACE) { addTestParamFromValue("keep_namespace", "true") }
+                    addTestParamFromParamIfExist("runtime_application_image_namespace", "IMAGE_GROUP")
+                    addTestParamFromParamIfExist("feature", "FEATURE")
 
                     echo "Test parameters = ${TEST_PARAMS}"
                     echo "Openshift url = ${OPENSHIFT_API_URL}"
@@ -117,19 +100,6 @@ pipeline {
                 sh "rm -rf ${WORKING_DIR} && mkdir -p ${WORKING_DIR}"
                 dir("${WORKING_DIR}") {
                     git url: "${REPOSITORY_URL}", branch: "${REPOSITORY_BRANCH}"
-                }
-            }
-        }
-        stage("Checkout pull request branch"){
-            when {
-                expression {
-                    return env.PULL_REQUEST != '';
-                }
-            }
-            steps {
-                dir("${WORKING_DIR}") {
-                    sh "git fetch origin pull/${PULL_REQUEST}/head:tempbranch"
-                    sh "git checkout tempbranch"
                 }
             }
         }
@@ -165,82 +135,9 @@ pipeline {
             }
         }
         
-        stage("Build operator image"){
-            when {
-                expression {
-                    return !params.SKIP_BUILD;
-                }
-            }
-            steps {
-                dir("${WORKING_DIR}") {
-                    sh ". ${ENV_FILE} && make image_builder=podman"
-                }
-            }
-        }
-        
-        stage("Build CLI"){
-            when {
-                expression {
-                    return !params.SKIP_BUILD;
-                }
-            }
-            steps {
-                dir("${WORKING_DIR}") {
-                    sh ". ${ENV_FILE} && make build-cli"
-                }
-            }
-        }
-
-        stage("Deploy operator image"){
-            when {
-                expression {
-                    return !params.SKIP_BUILD;
-                }
-            }
-            steps {
-                dir("${WORKING_DIR}") {                    
-                    loginOpenshift()
-                    loginContainerRegistry()
-
-                    sh """                        
-                        podman tag ${getOperatorBuiltImageTaggedName()} ${getOperatorImageTaggedName(env.EXTERNAL_IMAGE_REGISTRY)}
-                        podman push --tls-verify=false ${getOperatorImageTaggedName(env.EXTERNAL_IMAGE_REGISTRY)}
-                    """
-                }
-            }
-        }
-
-        stage("Run smoke tests"){
-            when {
-                expression {
-                    return !params.SKIP_SMOKE;
-                }
-            }
-            steps {
-                dir("${WORKING_DIR}") {
-                    loginOpenshift()
-                    sh ". ${ENV_FILE} && make run-smoke-tests ${TEST_PARAMS}"
-                }
-            }
-            post {
-                always {
-                    dir("${WORKING_DIR}") {
-                        archiveArtifacts artifacts: 'test/logs/smoke/**/*.log', allowEmptyArchive: true
-                        junit testResults: 'test/logs/smoke/junit.xml', allowEmptyResults: true
-                    }
-                }
-            }
-        }
-        
         stage("Run Full tests"){
-            when {
-                expression {
-                    return !params.SKIP_FULL;
-                }
-            }
             steps {
                 dir("${WORKING_DIR}") {
-                    loginOpenshift()
                     sh ". ${ENV_FILE} && make run-tests ${TEST_PARAMS}"
                 }
             }
@@ -304,12 +201,7 @@ void loginContainerRegistry() {
 }
 
 void setBuildDisplayName(){
-    displayName = ""
-    if(env.PULL_REQUEST != '') {
-        displayName = "PR-${PULL_REQUEST}"
-    } else {
-        displayName = "${REPOSITORY_BRANCH}"
-    }
+    displayName = "${REPOSITORY_BRANCH}"
     if(env.TEST_TAGS != '') {
         displayName += " (${TEST_TAGS})"
     }
@@ -329,7 +221,7 @@ String getOperatorImageName(String registry) {
 }
 
 String getOperatorImageTag(){
-    return env.PULL_REQUEST != '' ? "PR-${PULL_REQUEST}" : "${REPOSITORY_BRANCH}"
+    return "${REPOSITORY_BRANCH}"
 }
 
 void sendMail(){
@@ -387,7 +279,7 @@ void installOperatorSDK(){
         sudo yum install -y python2
         sudo yum install -y --skip-broken '*mercurial*'
         
-        # Install operator-sdk 0.15.1
+        # Install operator-sdk 0.18.2
         rm -rf \$HOME/bin/operator-sdk
         curl -LO https://github.com/operator-framework/operator-sdk/releases/download/\${OPERATOR_SDK_RELEASE_VERSION}/operator-sdk-\${OPERATOR_SDK_RELEASE_VERSION}-x86_64-linux-gnu
         chmod +x operator-sdk-\${OPERATOR_SDK_RELEASE_VERSION}-x86_64-linux-gnu && mkdir -p \$HOME/bin/ && cp operator-sdk-\${OPERATOR_SDK_RELEASE_VERSION}-x86_64-linux-gnu \$HOME/bin/operator-sdk && rm operator-sdk-\${OPERATOR_SDK_RELEASE_VERSION}-x86_64-linux-gnu
