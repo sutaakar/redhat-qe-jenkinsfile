@@ -89,6 +89,8 @@ pipeline {
                     if (params.SKIP_BUILD || params.CR_DEPLOYMENT_ONLY) {  addTestParamFromValue("cr_deployment_only", "true") }
                     addTestParamFromValue("operator_image", getOperatorImageName(env.INTERNAL_IMAGE_REGISTRY))
                     addTestParamFromValue("operator_tag", getOperatorImageTag())
+                    addTestParamFromValue("runtime_application_image_registry", env.INTERNAL_IMAGE_REGISTRY)
+                    addTestParamFromValue("runtime_application_image_namespace", "openshift")
 
                     addTestParamFromParamIfExist("ci", "NAMESPACE_PREFIX")
                     addTestParamFromParamIfExist("concurrent", "CONCURRENT_TESTS")
